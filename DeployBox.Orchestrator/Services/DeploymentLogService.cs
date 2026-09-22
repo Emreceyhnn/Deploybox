@@ -11,7 +11,7 @@ public interface IDeploymentLogService
 
 public class DeploymentLogService : IDeploymentLogService
 {
-    // We keep the last N lines here for clients that reconnect and resubscribe.
+    
     private const int BufferMaxLines = 200;
     private static readonly TimeSpan BufferTtl = TimeSpan.FromHours(1);
 
