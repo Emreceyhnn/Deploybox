@@ -1,0 +1,18 @@
+# Environment / secrets — never commit real credentials
+.env
+.env.local
+*.env
+!.env.example
+
+# .NET
+DeployBox.Orchestrator/bin/
+DeployBox.Orchestrator/obj/
+DeployBox.Orchestrator/appsettings.Development.json
+DeployBox.Orchestrator/appsettings.*.local.json
+*.user
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vs/
+.vscode/

@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: deploybox-db
+    restart: unless-stopped
+    ports:
+      # Bound to loopback only — Postgres must never be reachable from outside
+      # this host. The app/orchestrator connect to it via localhost anyway.
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set — see .env.example}"
+      POSTGRES_DB: deploybox
+      # The official image's default pg_hba.conf trusts any connection from
+      # 127.0.0.1/::1/the local unix socket unconditionally — meaning any
+      # process on the same host or Docker network could connect with zero
+      # credentials. Force password auth for every connection, not just
+      # remote ones.
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: deploybox-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 256mb
+      --maxmemory-policy volatile-lru
+      --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set — see .env.example}
+    ports:
+      # Bound to loopback only — the orchestrator trusts anything it pops off
+      # deploy:queue with Docker-daemon-equivalent privileges, so this must
+      # never be reachable from outside the host.
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  db-data:
+  redis-data:
