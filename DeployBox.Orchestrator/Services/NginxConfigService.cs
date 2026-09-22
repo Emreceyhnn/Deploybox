@@ -4,8 +4,8 @@ namespace DeployBox.Orchestrator.Services;
 
 public interface INginxConfigService
 {
-    Task<string> GenerateConfigAsync(string subdomain, int hostPort);
-    Task CreateAndEnableConfigAsync(string subdomain, int hostPort, CancellationToken cancellationToken = default);
+    Task<string> GenerateConfigAsync(string subdomain, string containerIp, int containerPort);
+    Task CreateAndEnableConfigAsync(string subdomain, string containerIp, int containerPort, CancellationToken cancellationToken = default);
     Task ReloadNginxAsync(CancellationToken cancellationToken = default);
 }
 
@@ -33,7 +33,7 @@ public class NginxConfigService : INginxConfigService
         _sitesEnabledDir = sitesEnabledDir ?? defaultEnabled;
     }
 
-    public async Task<string> GenerateConfigAsync(string subdomain, int hostPort)
+    public async Task<string> GenerateConfigAsync(string subdomain, string containerIp, int containerPort)
     {
         var templateFile = _templatePath;
         if (!File.Exists(templateFile))
@@ -52,14 +52,15 @@ public class NginxConfigService : INginxConfigService
         var content = await File.ReadAllTextAsync(templateFile);
         return content
             .Replace("{{SUBDOMAIN}}", subdomain)
-            .Replace("{{HOST_PORT}}", hostPort.ToString());
+            .Replace("{{CONTAINER_IP}}", containerIp)
+            .Replace("{{CONTAINER_PORT}}", containerPort.ToString());
     }
 
-    public async Task CreateAndEnableConfigAsync(string subdomain, int hostPort, CancellationToken cancellationToken = default)
+    public async Task CreateAndEnableConfigAsync(string subdomain, string containerIp, int containerPort, CancellationToken cancellationToken = default)
     {
         try
         {
-            var configContent = await GenerateConfigAsync(subdomain, hostPort);
+            var configContent = await GenerateConfigAsync(subdomain, containerIp, containerPort);
 
             try
             {
@@ -142,11 +143,20 @@ public class NginxConfigService : INginxConfigService
     {
         try
         {
+            // The nginx serving traffic (gateway-nginx) is a separate
+            // container from the orchestrator, which only shares the sites
+            // volume with it — running `nginx -t`/`nginx -s reload` directly
+            // would test/reload a copy of nginx that (if present at all)
+            // isn't the one actually listening on 80/443. Exec into the real
+            // container instead, via the docker CLI already required for
+            // building/running deployments.
+            var gatewayContainer = Environment.GetEnvironmentVariable("GATEWAY_NGINX_CONTAINER") ?? "gateway-nginx";
+
             // 1. Syntax test: nginx -t
             var testProcessInfo = new System.Diagnostics.ProcessStartInfo
             {
-                FileName = "nginx",
-                Arguments = "-t",
+                FileName = "docker",
+                ArgumentList = { "exec", gatewayContainer, "nginx", "-t" },
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -178,8 +188,8 @@ public class NginxConfigService : INginxConfigService
             // 2. Zero-downtime reload: nginx -s reload
             var reloadProcessInfo = new System.Diagnostics.ProcessStartInfo
             {
-                FileName = "nginx",
-                Arguments = "-s reload",
+                FileName = "docker",
+                ArgumentList = { "exec", gatewayContainer, "nginx", "-s", "reload" },
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -206,8 +216,8 @@ public class NginxConfigService : INginxConfigService
         }
         catch (System.ComponentModel.Win32Exception)
         {
-            // Nginx binary is not installed in PATH (e.g. local dev environment)
-            _logger.LogWarning("The Nginx command-line tool (nginx) was not found on the system. (nginx -t / nginx -s reload skipped)");
+            // docker CLI is not installed in PATH (e.g. local dev environment)
+            _logger.LogWarning("The docker CLI was not found on the system. (nginx -t / nginx -s reload skipped)");
         }
     }
 }

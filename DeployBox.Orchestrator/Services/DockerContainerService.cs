@@ -6,7 +6,7 @@ namespace DeployBox.Orchestrator.Services;
 
 public interface IDockerContainerService
 {
-    Task<int> DeployContainerAsync(string imageTag, string containerName, int containerPort, string? envVars = null, CancellationToken cancelToken = default);
+    Task<(int HostPort, string? ContainerIp, int ContainerPort)> DeployContainerAsync(string imageTag, string containerName, int containerPort, string? envVars = null, CancellationToken cancelToken = default);
     Task StreamContainerLogsAsync(string containerName, Func<string, Task> onLogLine, CancellationToken cancelToken = default);
 }
 
@@ -21,7 +21,7 @@ public class DockerContainerService : IDockerContainerService
         _logger = logger;
     }
 
-    public async Task<int> DeployContainerAsync(string imageTag, string containerName, int containerPort, string? envVars = null, CancellationToken cancelToken = default)
+    public async Task<(int HostPort, string? ContainerIp, int ContainerPort)> DeployContainerAsync(string imageTag, string containerName, int containerPort, string? envVars = null, CancellationToken cancelToken = default)
     {
         try
         {
@@ -141,15 +141,34 @@ public class DockerContainerService : IDockerContainerService
             SecurityOpt = new List<string> { "no-new-privileges:true" },
         };
 
+        // The orchestrator itself runs inside a container — its own
+        // 127.0.0.1 is its own network namespace, not the host's, so a
+        // published host port (e.g. "-p 32768:3006") is unreachable from here
+        // even though it works fine from outside. The gateway-nginx container
+        // that must later proxy to this deployment has the same problem.
+        // Attach the deployed container to the shared `gateway-network` so
+        // both the orchestrator's readiness check and nginx's proxy_pass can
+        // reach it directly by its container IP instead of a host port.
+        var deployNetwork = Environment.GetEnvironmentVariable("DEPLOY_NETWORK") ?? "gateway-network";
+        var networkingConfig = new NetworkingConfig
+        {
+            EndpointsConfig = new Dictionary<string, EndpointSettings>
+            {
+                [deployNetwork] = new EndpointSettings()
+            }
+        };
+
         var createResponse = await _dockerClient.Containers.CreateContainerAsync(new CreateContainerParameters(config)
         {
             Name = containerName,
-            HostConfig = hostConfig
+            HostConfig = hostConfig,
+            NetworkingConfig = networkingConfig
         }, cancelToken);
 
         await _dockerClient.Containers.StartContainerAsync(createResponse.ID, new ContainerStartParameters(), cancelToken);
 
         int assignedHostPort = 0;
+        string? containerIp = null;
         try
         {
             var inspectData = await _dockerClient.Containers.InspectContainerAsync(createResponse.ID, cancelToken);
@@ -175,13 +194,20 @@ public class DockerContainerService : IDockerContainerService
                     }
                 }
             }
+
+            if (inspectData?.NetworkSettings?.Networks != null
+                && inspectData.NetworkSettings.Networks.TryGetValue(deployNetwork, out var networkInfo)
+                && !string.IsNullOrEmpty(networkInfo?.IPAddress))
+            {
+                containerIp = networkInfo.IPAddress;
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to read the host port while inspecting the container. ContainerId: {ID}", createResponse.ID);
+            _logger.LogWarning(ex, "Failed to read the host port/IP while inspecting the container. ContainerId: {ID}", createResponse.ID);
         }
 
-        return assignedHostPort;
+        return (assignedHostPort, containerIp, targetPort);
     }
 
     public async Task StreamContainerLogsAsync(string containerName, Func<string, Task> onLogLine, CancellationToken cancelToken = default)

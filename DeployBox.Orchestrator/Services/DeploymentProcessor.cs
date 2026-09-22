@@ -172,7 +172,7 @@ public class DeploymentProcessor : IDeploymentProcessor
             await _logService.SendLogAsync(payload.DeploymentId, "Starting container...");
             var containerName = $"deploybox-{payload.Subdomain}";
 
-            var hostPort = await _dockerContainerService.DeployContainerAsync(imageTag, containerName, payload.ContainerPort, payload.EnvVars, cancellationToken);
+            var (hostPort, containerIp, actualContainerPort) = await _dockerContainerService.DeployContainerAsync(imageTag, containerName, payload.ContainerPort, payload.EnvVars, cancellationToken);
             await _logService.SendLogAsync(payload.DeploymentId, $"Container started successfully (Host Port: {hostPort}).");
 
             // Stream runtime logs in the background for a limited time after the container comes up.
@@ -187,19 +187,28 @@ public class DeploymentProcessor : IDeploymentProcessor
             // easily take longer than container startup) — producing a
             // window of 502s for real users right after "Successfully
             // published!" was reported.
+            //
+            // This connects to the container's own IP on the shared Docker
+            // network, not the published host port — the orchestrator runs
+            // inside its own container, so a host-published port is not
+            // reachable via 127.0.0.1 from here.
             await _logService.SendLogAsync(payload.DeploymentId, "Waiting for the app to become ready...");
-            var isReady = await WaitForContainerReadyAsync(hostPort, cancellationToken);
+            if (string.IsNullOrEmpty(containerIp))
+            {
+                throw new InvalidOperationException("Could not determine the deployed container's network address.");
+            }
+            var isReady = await WaitForContainerReadyAsync(containerIp, actualContainerPort, cancellationToken);
             if (!isReady)
             {
                 throw new TimeoutException(
-                    $"The application did not start listening on port {hostPort} within the readiness window. " +
+                    $"The application did not start listening on port {actualContainerPort} within the readiness window. " +
                     "Check that it binds to 0.0.0.0 (not just localhost) and starts within a reasonable time.");
             }
             await _logService.SendLogAsync(payload.DeploymentId, "App is up and accepting connections.");
 
-            if (hostPort > 0 && _nginxConfigService != null)
+            if (_nginxConfigService != null)
             {
-                await _nginxConfigService.CreateAndEnableConfigAsync(payload.Subdomain, hostPort, cancellationToken);
+                await _nginxConfigService.CreateAndEnableConfigAsync(payload.Subdomain, containerIp, actualContainerPort, cancellationToken);
                 await _logService.SendLogAsync(payload.DeploymentId, $"Nginx configuration written to /etc/nginx/sites-available/{payload.Subdomain}.conf and the sites-enabled directory.");
             }
 
@@ -269,9 +278,9 @@ public class DeploymentProcessor : IDeploymentProcessor
     // An actual HTTP request is required to prove something in the container
     // is really receiving and responding to traffic; any response at all
     // (even a 404/500) counts as "up," since we don't know the app's routes.
-    private static async Task<bool> WaitForContainerReadyAsync(int hostPort, CancellationToken cancellationToken)
+    private static async Task<bool> WaitForContainerReadyAsync(string containerIp, int containerPort, CancellationToken cancellationToken)
     {
-        if (hostPort <= 0) return false;
+        if (string.IsNullOrEmpty(containerIp) || containerPort <= 0) return false;
 
         using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
         var deadline = DateTime.UtcNow.AddSeconds(30);
@@ -283,7 +292,7 @@ public class DeploymentProcessor : IDeploymentProcessor
 
             try
             {
-                using var response = await httpClient.GetAsync($"http://127.0.0.1:{hostPort}/", cancellationToken);
+                using var response = await httpClient.GetAsync($"http://{containerIp}:{containerPort}/", cancellationToken);
                 // Any HTTP response — including 404/500 — proves the app is
                 // actually accepting and answering requests, which is what
                 // matters for cutting nginx over to it.
