@@ -13,24 +13,27 @@ public class NginxConfigService : INginxConfigService
 {
     private readonly ILogger<NginxConfigService> _logger;
     private readonly string _templatePath;
-    private readonly string _sitesAvailableDir;
-    private readonly string _sitesEnabledDir;
+    private readonly string _confDir;
 
     public NginxConfigService(
         ILogger<NginxConfigService> logger,
         string? templatePath = null,
-        string? sitesAvailableDir = null,
-        string? sitesEnabledDir = null)
+        string? confDir = null)
     {
         _logger = logger;
         _templatePath = templatePath ?? Path.Combine(AppContext.BaseDirectory, "Templates", "nginx-site.conf.template");
-        
-        var isLinux = OperatingSystem.IsLinux();
-        var defaultAvailable = isLinux ? "/etc/nginx/sites-available" : Path.Combine(AppContext.BaseDirectory, "nginx", "sites-available");
-        var defaultEnabled = isLinux ? "/etc/nginx/sites-enabled" : Path.Combine(AppContext.BaseDirectory, "nginx", "sites-enabled");
 
-        _sitesAvailableDir = sitesAvailableDir ?? defaultAvailable;
-        _sitesEnabledDir = sitesEnabledDir ?? defaultEnabled;
+        // gateway-nginx (a separate container) doesn't use the
+        // sites-available/sites-enabled symlink convention — its nginx.conf
+        // does a flat `include /etc/nginx/conf.d/*.conf`. The orchestrator
+        // only shares that directory with it via the /home/gateway/conf.d
+        // volume mount (see docker-compose.yml), mounted here at
+        // /etc/nginx/conf.d — writing to sites-available/enabled would land
+        // in a directory gateway-nginx never reads.
+        var isLinux = OperatingSystem.IsLinux();
+        var defaultConfDir = isLinux ? "/etc/nginx/conf.d" : Path.Combine(AppContext.BaseDirectory, "nginx", "conf.d");
+
+        _confDir = confDir ?? defaultConfDir;
     }
 
     public async Task<string> GenerateConfigAsync(string subdomain, string containerIp, int containerPort)
@@ -62,74 +65,21 @@ public class NginxConfigService : INginxConfigService
         {
             var configContent = await GenerateConfigAsync(subdomain, containerIp, containerPort);
 
-            try
+            var confDir = Directory.Exists(_confDir) ? _confDir : Path.Combine(AppContext.BaseDirectory, "nginx", "conf.d");
+            if (!Directory.Exists(confDir))
             {
-                if (!Directory.Exists(_sitesAvailableDir))
-                {
-                    Directory.CreateDirectory(_sitesAvailableDir);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Could not access the sites-available directory ({Path}), using local fallback.", _sitesAvailableDir);
+                Directory.CreateDirectory(confDir);
             }
 
-            try
-            {
-                if (!Directory.Exists(_sitesEnabledDir))
-                {
-                    Directory.CreateDirectory(_sitesEnabledDir);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Could not access the sites-enabled directory ({Path}), using local fallback.", _sitesEnabledDir);
-            }
+            var configPath = Path.Combine(confDir, $"{subdomain}.conf");
 
-            var availablePath = Path.Combine(Directory.Exists(_sitesAvailableDir) ? _sitesAvailableDir : Path.Combine(AppContext.BaseDirectory, "nginx", "sites-available"), $"{subdomain}.conf");
-            var enabledPath = Path.Combine(Directory.Exists(_sitesEnabledDir) ? _sitesEnabledDir : Path.Combine(AppContext.BaseDirectory, "nginx", "sites-enabled"), $"{subdomain}.conf");
+            // gateway-nginx's nginx.conf does `include /etc/nginx/conf.d/*.conf`
+            // directly — no sites-available/enabled symlink step needed, a
+            // single write here is enough for it to pick this site up.
+            await File.WriteAllTextAsync(configPath, configContent, cancellationToken);
+            _logger.LogInformation("Nginx config written: {Path}", configPath);
 
-            var availableDir = Path.GetDirectoryName(availablePath);
-            if (!string.IsNullOrEmpty(availableDir) && !Directory.Exists(availableDir))
-            {
-                Directory.CreateDirectory(availableDir);
-            }
-
-            var enabledDir = Path.GetDirectoryName(enabledPath);
-            if (!string.IsNullOrEmpty(enabledDir) && !Directory.Exists(enabledDir))
-            {
-                Directory.CreateDirectory(enabledDir);
-            }
-
-            // 1. Write to sites-available/{subdomain}.conf (overwrite if it exists)
-            await File.WriteAllTextAsync(availablePath, configContent, cancellationToken);
-            _logger.LogInformation("Nginx config written to sites-available folder: {Path}", availablePath);
-
-            // 2. Create sites-enabled/{subdomain}.conf symlink (ln -s) (overwrite if it exists)
-            if (File.Exists(enabledPath) || Directory.Exists(enabledPath))
-            {
-                try
-                {
-                    File.Delete(enabledPath);
-                }
-                catch (Exception delEx)
-                {
-                    _logger.LogWarning(delEx, "Warning while deleting old symlink/file: {Path}", enabledPath);
-                }
-            }
-
-            try
-            {
-                File.CreateSymbolicLink(enabledPath, availablePath);
-                _logger.LogInformation("Nginx symlink linked into sites-enabled folder: {Link} -> {Target}", enabledPath, availablePath);
-            }
-            catch (Exception symlinkEx)
-            {
-                _logger.LogWarning(symlinkEx, "Permission error/warning while creating symlink. Falling back to file copy.");
-                File.Copy(availablePath, enabledPath, overwrite: true);
-            }
-
-            // 3. Syntax test (nginx -t) & zero-downtime reload (nginx -s reload)
+            // Syntax test (nginx -t) & zero-downtime reload (nginx -s reload)
             await ReloadNginxAsync(cancellationToken);
         }
         catch (Exception ex)

@@ -209,7 +209,7 @@ public class DeploymentProcessor : IDeploymentProcessor
             if (_nginxConfigService != null)
             {
                 await _nginxConfigService.CreateAndEnableConfigAsync(payload.Subdomain, containerIp, actualContainerPort, cancellationToken);
-                await _logService.SendLogAsync(payload.DeploymentId, $"Nginx configuration written to /etc/nginx/sites-available/{payload.Subdomain}.conf and the sites-enabled directory.");
+                await _logService.SendLogAsync(payload.DeploymentId, $"Nginx configuration written to /etc/nginx/conf.d/{payload.Subdomain}.conf.");
             }
 
             var appDomain = _configuration?["AppDomain"]
