@@ -2,11 +2,8 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL environment variable is not set");
-}
-
-const connectionString = process.env.DATABASE_URL;
+const connectionString =
+  process.env.DATABASE_URL || "postgres://postgres:postgres@localhost:5432/deploybox";
 
 const globalForDb = globalThis as unknown as {
   client: ReturnType<typeof postgres> | undefined;

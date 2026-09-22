@@ -32,19 +32,25 @@ export async function proxy(request: NextRequest) {
     }
 
     if (token.jti) {
-      const port = process.env.PORT || 3000;
-      const revokedRes = await fetch(`http://127.0.0.1:${port}/api/auth/denylist-check`, {
-        headers: { "x-jti": token.jti },
-      });
-      const { isRevoked } = await revokedRes.json();
-
-      if (isRevoked) {
-        const authUrl = new URL("/auth", request.url);
-        authUrl.searchParams.set("callbackUrl", request.url);
-        const response = NextResponse.redirect(authUrl);
-        response.cookies.delete("next-auth.session-token");
-        response.cookies.delete("__Secure-next-auth.session-token");
-        return response;
+      try {
+        const port = process.env.PORT || 3000;
+        const revokedRes = await fetch(`http://127.0.0.1:${port}/api/auth/denylist-check`, {
+          headers: { "x-jti": token.jti },
+          signal: AbortSignal.timeout(2000),
+        });
+        if (revokedRes.ok) {
+          const { isRevoked } = await revokedRes.json();
+          if (isRevoked) {
+            const authUrl = new URL("/auth", request.url);
+            authUrl.searchParams.set("callbackUrl", request.url);
+            const response = NextResponse.redirect(authUrl);
+            response.cookies.delete("next-auth.session-token");
+            response.cookies.delete("__Secure-next-auth.session-token");
+            return response;
+          }
+        }
+      } catch {
+        // Fallback gracefully: NextAuth session callback also verifies token revocation
       }
     }
   }

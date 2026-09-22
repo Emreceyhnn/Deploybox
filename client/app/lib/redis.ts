@@ -8,9 +8,16 @@ declare global {
 }
 
 function createClient() {
-  const client = new Redis(redisUrl);
+  const client = new Redis(redisUrl, {
+    lazyConnect: true,
+    maxRetriesPerRequest: 3,
+    enableOfflineQueue: false,
+  });
   client.on("error", (err) => {
-    console.error("[redis] connection error:", err.message);
+    // Avoid noisy logs during build/static analysis
+    if (process.env.NEXT_PHASE !== "phase-production-build") {
+      console.error("[redis] connection error:", err.message);
+    }
   });
   return client;
 }

@@ -27,7 +27,7 @@ const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60; // 30 days
 const SESSION_REFRESH_THRESHOLD_SECONDS = 24 * 60 * 60; // 1 day
 
 export const authOptions: AuthOptions = {
-  secret: process.env.JWT_SECRET,
+  secret: process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET,
   session: {
     strategy: "jwt",
     maxAge: SESSION_MAX_AGE_SECONDS,
