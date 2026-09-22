@@ -1,5 +1,7 @@
 import { loadEnvConfig } from "@next/env";
+import path from "path";
 
+loadEnvConfig(path.resolve(__dirname, "../../../.."));
 loadEnvConfig(process.cwd());
 
 const USER1_ID = "00000000-0000-0000-0000-000000000001";

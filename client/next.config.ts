@@ -1,4 +1,10 @@
 import type { NextConfig } from "next";
+import { loadEnvConfig } from "@next/env";
+import path from "path";
+
+// Load centralized root .env
+loadEnvConfig(path.resolve(__dirname, ".."));
+loadEnvConfig(process.cwd());
 
 const nextConfig: NextConfig = {
   output: "standalone",
