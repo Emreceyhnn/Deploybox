@@ -36,7 +36,12 @@ export async function GET(
   const encoder = new TextEncoder();
   const customStream = new ReadableStream({
     async start(controller) {
+      // duplicate() inherits lazyConnect + enableOfflineQueue: false, so the
+      // connection must be established explicitly before subscribing —
+      // otherwise subscribe() throws ("Stream isn't writeable") and the
+      // whole SSE response aborts, surfacing as a 502 to the client.
       const sub = redisSubscriber.duplicate();
+      await sub.connect();
       await sub.subscribe(channel);
 
       const messageHandler = (ch: string, message: string) => {
