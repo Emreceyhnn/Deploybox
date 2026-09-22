@@ -32,7 +32,8 @@ export async function proxy(request: NextRequest) {
     }
 
     if (token.jti) {
-      const revokedRes = await fetch(new URL("/api/auth/denylist-check", request.url), {
+      const port = process.env.PORT || 3000;
+      const revokedRes = await fetch(`http://127.0.0.1:${port}/api/auth/denylist-check`, {
         headers: { "x-jti": token.jti },
       });
       const { isRevoked } = await revokedRes.json();
