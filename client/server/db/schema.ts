@@ -25,7 +25,7 @@ export const deploymentStatusEnum = pgEnum("deployment_status", [
 
 export const triggerTypeEnum = pgEnum("trigger_type", [
   "push",
-  "manuel", // deprecated typo, kept for backwards compatibility with existing rows — use "manual"
+  "manuel",
   "manual",
   "rollback",
 ]);
