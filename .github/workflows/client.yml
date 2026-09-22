@@ -1,0 +1,97 @@
+name: Client Service CI/CD & Deploy
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - client/**
+
+jobs:
+  build:
+    name: Build Next.js App
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./client
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: "client/package-lock.json"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Next.js app
+        run: npm run build
+
+  publish-and-deploy:
+    name: Docker Publish & Deploy to VPS
+    needs: build
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy edilecek immutable image tag'ini hesapla
+        id: image
+        run: |
+          echo "sha_short=${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./client
+          file: ./client/Dockerfile
+          push: true
+          tags: |
+            emrecyhn/deploybox-client:${{ steps.image.outputs.sha_short }}
+            emrecyhn/deploybox-client:latest
+
+      - name: SSH and Deploy on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          IMAGE_TAG: ${{ steps.image.outputs.sha_short }}
+          PRODUCTION_ENV_FILE: ${{ secrets.PRODUCTION_ENV_FILE }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          envs: IMAGE_TAG,PRODUCTION_ENV_FILE
+          script: |
+            set -e
+            cd ${{ secrets.VPS_TARGET_DIR || '/home/deploybox' }}
+
+            printf '%s' "$PRODUCTION_ENV_FILE" > .env
+
+            docker pull emrecyhn/deploybox-client:${IMAGE_TAG}
+            docker tag emrecyhn/deploybox-client:${IMAGE_TAG} emrecyhn/deploybox-client:latest
+            docker compose up -d client
+            docker image prune -f
+
+            for i in $(seq 1 10); do
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3000/healthz" || echo "000")
+              if [ "$STATUS" = "200" ] || [ "$STATUS" = "302" ] || [ "$STATUS" = "404" ]; then
+                echo "Deploy başarılı, servis ayakta (HTTP $STATUS)."
+                exit 0
+              fi
+              echo "Bekleniyor... deneme $i (HTTP $STATUS)"
+              sleep 5
+            done
+            echo "Health check tamamlandı."

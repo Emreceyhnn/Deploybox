@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   // Next's built-in gzip buffers the whole response before sending it, which
   // breaks long-lived streams (SSE build/deploy logs never flush). Nginx (or
   // the platform we deploy behind) handles compression for everything else.

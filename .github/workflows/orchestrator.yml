@@ -1,0 +1,95 @@
+name: Orchestrator Service CI/CD & Deploy
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - DeployBox.Orchestrator/**
+
+jobs:
+  build:
+    name: Build .NET App
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./DeployBox.Orchestrator
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+  publish-and-deploy:
+    name: Docker Publish & Deploy to VPS
+    needs: build
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy edilecek immutable image tag'ini hesapla
+        id: image
+        run: |
+          echo "sha_short=${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./DeployBox.Orchestrator
+          file: ./DeployBox.Orchestrator/Dockerfile
+          push: true
+          tags: |
+            emrecyhn/deploybox-orchestrator:${{ steps.image.outputs.sha_short }}
+            emrecyhn/deploybox-orchestrator:latest
+
+      - name: SSH and Deploy on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          IMAGE_TAG: ${{ steps.image.outputs.sha_short }}
+          PRODUCTION_ENV_FILE: ${{ secrets.PRODUCTION_ENV_FILE }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          envs: IMAGE_TAG,PRODUCTION_ENV_FILE
+          script: |
+            set -e
+            cd ${{ secrets.VPS_TARGET_DIR || '/home/deploybox' }}
+
+            printf '%s' "$PRODUCTION_ENV_FILE" > .env
+
+            docker pull emrecyhn/deploybox-orchestrator:${IMAGE_TAG}
+            docker tag emrecyhn/deploybox-orchestrator:${IMAGE_TAG} emrecyhn/deploybox-orchestrator:latest
+            docker compose up -d orchestrator
+            docker image prune -f
+
+            for i in $(seq 1 10); do
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:5000/healthz" || echo "000")
+              if [ "$STATUS" = "200" ] || [ "$STATUS" = "302" ] || [ "$STATUS" = "404" ]; then
+                echo "Deploy başarılı, servis ayakta (HTTP $STATUS)."
+                exit 0
+              fi
+              echo "Bekleniyor... deneme $i (HTTP $STATUS)"
+              sleep 5
+            done
+            echo "Health check tamamlandı."
