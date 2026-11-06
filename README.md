@@ -76,6 +76,26 @@ the browser as it happens.
 7. On success, Nginx is configured to reverse-proxy
    `<subdomain>.<domain>` to the container's published port.
 
+## Technical decisions
+
+**Why Redis Pub/Sub + a capped buffer instead of just streaming live?** A
+client that connects after a deploy has already started (or reconnects after
+a drop) still needs to see what already happened. Publishing to a channel
+alone loses anything sent before you subscribed, so every log line is also
+appended to a capped Redis list (`logs:<id>:buffer`) that a new connection
+replays before subscribing live — no missed output, no extra database writes.
+
+**Why SSE instead of WebSockets for log streaming?** The flow is strictly
+one-directional (server → browser). SSE gets auto-reconnect and works over
+plain HTTP/1.1 with no extra client library, which is the right trade-off
+for a log tail — there's nothing the browser needs to send back.
+
+**Why a separate .NET Orchestrator instead of running builds in the Next.js
+process?** Building and running Docker containers from inside a web request
+handler is slow, blocking, and a bad isolation boundary. A dedicated
+background worker polling a Redis queue keeps the web app responsive and
+lets deploys run independently of HTTP request lifecycles.
+
 ## Getting started
 
 ### Prerequisites
