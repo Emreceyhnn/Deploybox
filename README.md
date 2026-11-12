@@ -1,5 +1,11 @@
 # DeployBox
 
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000)](https://nextjs.org/)
+[![tRPC](https://img.shields.io/badge/tRPC-11-2596BE)](https://trpc.io/)
+[![.NET Worker](https://img.shields.io/badge/.NET-Worker%20Service-512BD4)](https://dotnet.microsoft.com/)
+[![Docker](https://img.shields.io/badge/Docker-Engine%20API-2496ED)](https://docs.docker.com/engine/api/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 Push to a GitHub repo, get a live URL. DeployBox watches a repo's default branch,
 builds a Docker image from its `Dockerfile`, runs the container, and points
 `<subdomain>.<domain>` at it via Nginx — with live build/deploy logs streamed to
