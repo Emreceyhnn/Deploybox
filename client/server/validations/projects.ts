@@ -1,20 +1,16 @@
 import { z } from "zod";
 
 export const addProjectSchema = z.object({
-  githubRepo: z
-    .string()
-    .refine((value) => {
-      try {
-        new URL(value);
-        return true;
-      } catch {
-        return false;
-      }
-    })
-    .refine((value) => {
-      const url = new URL(value);
-      return url.hostname === "github.com";
-    }),
+  // Single refine: a second refine would still run after the first one fails
+  // (Zod runs all refinements), and an unguarded `new URL(value)` there would
+  // throw out of safeParse() on user-supplied strings.
+  githubRepo: z.string().refine((value) => {
+    try {
+      return new URL(value).hostname === "github.com";
+    } catch {
+      return false;
+    }
+  }),
 
   subdomain: z
     .string()
