@@ -12,7 +12,7 @@ vi.mock("@/app/lib/redis", () => ({
 import { DENYLIST_PREFIXES, DenylistService } from "@/app/lib/denylist";
 import { redis } from "@/app/lib/redis";
 
-const redisMock = redis as {
+const redisMock = redis as unknown as {
   set: ReturnType<typeof vi.fn>;
   get: ReturnType<typeof vi.fn>;
   exists: ReturnType<typeof vi.fn>;

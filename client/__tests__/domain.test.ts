@@ -3,8 +3,8 @@ import { getProjectDomain, getProjectFullUrl } from "@/app/lib/domain";
 
 describe("getProjectDomain", () => {
   afterEach(() => {
-    delete process.env.NEXT_PUBLIC_APP_DOMAIN;
-    delete process.env.APP_DOMAIN;
+    delete (process.env as Record<string, string | undefined>).NEXT_PUBLIC_APP_DOMAIN;
+    delete (process.env as Record<string, string | undefined>).APP_DOMAIN;
   });
 
   it("returns customDomain when provided", () => {
@@ -33,9 +33,9 @@ describe("getProjectDomain", () => {
 
 describe("getProjectFullUrl", () => {
   afterEach(() => {
-    delete process.env.NEXT_PUBLIC_APP_DOMAIN;
-    delete process.env.APP_DOMAIN;
-    delete process.env.NODE_ENV;
+    delete (process.env as Record<string, string | undefined>).NEXT_PUBLIC_APP_DOMAIN;
+    delete (process.env as Record<string, string | undefined>).APP_DOMAIN;
+    Object.defineProperty(process.env, "NODE_ENV", { value: "test", configurable: true, writable: true, enumerable: true });
   });
 
   it("returns customDomain as-is when it already has protocol", () => {
@@ -63,12 +63,12 @@ describe("getProjectFullUrl", () => {
   });
 
   it("returns localhost:hostPort in development with hostPort set", () => {
-    process.env.NODE_ENV = "development";
+    Object.defineProperty(process.env, "NODE_ENV", { value: "development", configurable: true, writable: true, enumerable: true });
     expect(getProjectFullUrl("myapp", null, 49152)).toBe("http://localhost:49152");
   });
 
   it("falls back to emreceyhan.xyz in development with no hostPort", () => {
-    process.env.NODE_ENV = "development";
+    Object.defineProperty(process.env, "NODE_ENV", { value: "development", configurable: true, writable: true, enumerable: true });
     expect(getProjectFullUrl("myapp", null, null)).toBe("https://myapp.emreceyhan.xyz");
   });
 
