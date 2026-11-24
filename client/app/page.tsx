@@ -2,6 +2,10 @@ import { Box, Typography } from "@mui/material";
 import { RocketLaunchOutlined, TerminalOutlined, HubOutlined, BoltOutlined } from "@mui/icons-material";
 import { colors, radius } from "./theme";
 
+export const metadata = {
+  alternates: { canonical: "/" },
+};
+
 const features = [
   {
     icon: RocketLaunchOutlined,
