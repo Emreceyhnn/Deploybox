@@ -4,6 +4,7 @@ import { colors } from "@/app/theme";
 
 export const metadata = {
   title: "Privacy Policy — DeployBox",
+  alternates: { canonical: "/privacy" },
 };
 
 export default function PrivacyPage() {

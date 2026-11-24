@@ -4,6 +4,7 @@ import { colors } from "@/app/theme";
 
 export const metadata = {
   title: "Terms of Service — DeployBox",
+  alternates: { canonical: "/terms" },
 };
 
 export default function TermsPage() {

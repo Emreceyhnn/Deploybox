@@ -5,6 +5,7 @@ import "./styles/globals.css";
 import { TRPCProvider } from "./lib/trpc/Provider";
 import { ToastProvider } from "./lib/toast/ToastProvider";
 import { AppThemeProvider } from "./lib/theme/AppThemeProvider";
+import { SITE_URL } from "./lib/site";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -17,13 +18,19 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXTAUTH_URL ?? "http://localhost:3000"),
-  title: "DeployBox",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "DeployBox — Push to a GitHub repo, get a live URL",
+    template: "%s",
+  },
   description: "Push to a GitHub repo, get a live URL.",
+  applicationName: "DeployBox",
+  robots: { index: true, follow: true },
   openGraph: {
     title: "DeployBox",
     description: "Push to a GitHub repo, get a live URL.",
     type: "website",
+    siteName: "DeployBox",
   },
   twitter: {
     card: "summary_large_image",
