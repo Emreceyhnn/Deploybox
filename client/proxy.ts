@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { SITE_URL } from "./app/lib/site";
 
 const PROTECTED_ROUTES = ["projects", "playground"];
 
@@ -27,7 +28,7 @@ export async function proxy(request: NextRequest) {
 
     if (!token || !token.userId) {
       const authUrl = new URL("/auth", request.url);
-      authUrl.searchParams.set("callbackUrl", request.url);
+      authUrl.searchParams.set("callbackUrl", `${SITE_URL}${pathname}${request.nextUrl.search}`);
       return NextResponse.redirect(authUrl);
     }
 
@@ -42,7 +43,7 @@ export async function proxy(request: NextRequest) {
           const { isRevoked } = await revokedRes.json();
           if (isRevoked) {
             const authUrl = new URL("/auth", request.url);
-            authUrl.searchParams.set("callbackUrl", request.url);
+            authUrl.searchParams.set("callbackUrl", `${SITE_URL}${pathname}${request.nextUrl.search}`);
             const response = NextResponse.redirect(authUrl);
             response.cookies.delete("next-auth.session-token");
             response.cookies.delete("__Secure-next-auth.session-token");

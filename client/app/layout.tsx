@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AppRouterCacheProvider } from "@mui/material-nextjs/v15-appRouter";
 import "./styles/globals.css";
@@ -54,6 +55,16 @@ export default function RootLayout({
             </TRPCProvider>
           </AppThemeProvider>
         </AppRouterCacheProvider>
+        {process.env.NODE_ENV === "production" && (
+          // Cloudflare Web Analytics (cookieless, no personal data).
+          <Script
+            src="https://static.cloudflareinsights.com/beacon.min.js"
+            strategy="afterInteractive"
+            data-cf-beacon={JSON.stringify({
+              token: "c70e86ce99e74b01a148e54f25d2b373",
+            })}
+          />
+        )}
       </body>
     </html>
   );

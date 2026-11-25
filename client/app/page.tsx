@@ -6,6 +6,17 @@ export const metadata = {
   alternates: { canonical: "/" },
 };
 
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "DeployBox",
+  url: "https://deploybox.emreceyhan.xyz/",
+  description: "Push-to-deploy platform: connect a GitHub repo and every push builds a container and goes live on a subdomain.",
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "Web",
+  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+};
+
 const features = [
   {
     icon: RocketLaunchOutlined,
@@ -32,6 +43,10 @@ const features = [
 export default function LandingPage() {
   return (
     <Box sx={{ bgcolor: colors.bgPage, minHeight: "100vh", color: colors.textPrimary }}>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <Box
         component="header"
         sx={{
